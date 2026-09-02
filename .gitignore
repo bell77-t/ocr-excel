@@ -1,0 +1,25 @@
+# Archivos de configuración y secretos (MUY IMPORTANTE)
+.env
+config_secret.json
+secrets.toml
+.streamlit/secrets.toml
+
+# Archivos temporales de Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Archivos de salida de Excel
+*.xlsx
+*.xls
+test_riego_salida.xlsx
+
+# Entornos virtuales
+venv/
+env/
+.venv/
+
+# Logs y depuración
+*.log
+top_debug.png
