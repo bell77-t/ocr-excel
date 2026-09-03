@@ -341,84 +341,355 @@ def extraer_con_tesseract(bytes_imagen):
         df = df.drop_duplicates(subset=["N°"]).sort_values(by="N°")
     return df, "CONTROL Y ASIGNACIÓN", "", ""
 
-# --- GENERADOR DE EXCEL PROFESIONAL ADAPTABLE A CUALQUIER TABLA ---
+# --- MAPEADOR AUTOMÁTICO A DECISIÓN DE RIEGO ---
 
-def generar_excel_estilizado(df: pd.DataFrame, titulo: str, fecha: str = "", notas=None) -> io.BytesIO:
-    """Genera un archivo Excel profesional adaptándose a cualquier cantidad y tipo de columnas con sección destacada de excedentes/notas."""
+def mapear_decision_riego(df_foto: pd.DataFrame, fecha_str: str = "") -> pd.DataFrame:
+    """Transforma los datos leídos de la foto (Entrada, Drenaje, Válvulas) en el formato oficial de DECISIÓN DE RIEGO."""
+    filas_dec = []
+    
+    col_map = {re.sub(r'[^A-Z0-9%]', '', str(c).upper()): c for c in df_foto.columns}
+
+    # Detectar columnas clave
+    c_val = next((col_map[k] for k in col_map if 'V' in k and ('VAL' in k or k == 'V' or (k.startswith('V') and not 'AFORO' in k))), df_foto.columns[0] if len(df_foto.columns) > 0 else None)
+    c_ce_ent = next((col_map[k] for k in col_map if 'CE' in k and ('ENT' in k or not 'DREN' in k)), None)
+    c_ce_dren = next((col_map[k] for k in col_map if 'CE' in k and 'DREN' in k), c_ce_ent)
+    c_ph_ent = next((col_map[k] for k in col_map if 'PH' in k and ('ENT' in k or not 'DREN' in k)), None)
+    c_ph_dren = next((col_map[k] for k in col_map if 'PH' in k and 'DREN' in k), c_ph_ent)
+    c_vaforo = next((col_map[k] for k in col_map if 'VAFORO' in k or 'AFORO' in k or 'VOLEJ' in k), None)
+    c_vaforo_dren = next((col_map[k] for k in col_map if 'AFORO' in k and 'DREN' in k), None)
+    c_dr = next((col_map[k] for k in col_map if '%' in k or 'DREN' in k or 'PORC' in k or 'DR' in k), None)
+
+    # Calcular número de semana estimado
+    semana_val = "36"
+    if fecha_str:
+        nums = re.findall(r'\b\d{1,4}\b', fecha_str)
+        if len(nums) >= 2:
+            try:
+                dia, mes = int(nums[0]), int(nums[1])
+                semana_val = str(min(52, max(1, (mes - 1) * 4 + dia // 7 + 1)))
+            except Exception:
+                pass
+
+    for idx, row in df_foto.iterrows():
+        v_raw = str(row[c_val] if c_val in row else idx + 1).strip()
+        m_v = re.search(r'\d+', v_raw)
+        num_val = int(m_v.group(0)) if m_v else (idx + 1)
+
+        # CE y pH (priorizar medición de drenaje si existe para semáforo agronómico)
+        ce_val = row[c_ce_dren] if (c_ce_dren and c_ce_dren in row) else ""
+        if ce_val == "" or ce_val == "*" or pd.isna(ce_val):
+            ce_val = row[c_ce_ent] if (c_ce_ent and c_ce_ent in row) else "*"
+
+        ph_val = row[c_ph_dren] if (c_ph_dren and c_ph_dren in row) else ""
+        if ph_val == "" or ph_val == "*" or pd.isna(ph_val):
+            ph_val = row[c_ph_ent] if (c_ph_ent and c_ph_ent in row) else "*"
+
+        # Convertir CE y pH a float si es posible
+        try:
+            ce_val = float(str(ce_val).replace(',', '.'))
+        except Exception:
+            pass
+
+        try:
+            ph_val = float(str(ph_val).replace(',', '.'))
+        except Exception:
+            pass
+
+        # Vol Ejecutado
+        vol_ej_val = row[c_vaforo] if (c_vaforo and c_vaforo in row) else ""
+        try:
+            vol_ej_val = float(str(vol_ej_val).replace(',', '.'))
+        except Exception:
+            pass
+
+        # % Drenaje
+        dr_val = row[c_dr] if (c_dr and c_dr in row) else ""
+        if isinstance(dr_val, str) and "%" in dr_val:
+            try:
+                dr_num = float(dr_val.replace("%", "").replace(",", ".").strip()) / 100.0
+            except Exception:
+                dr_num = dr_val
+        else:
+            try:
+                dr_num = float(str(dr_val).replace(',', '.'))
+                if dr_num > 1.0 and dr_num <= 100.0:
+                    dr_num = dr_num / 100.0
+            except Exception:
+                dr_num = dr_val
+
+        # Observaciones
+        obs = ""
+        if c_vaforo_dren and c_vaforo_dren in row and str(row[c_vaforo_dren]).strip() not in ["", "*", "nan"]:
+            obs = f"Aforo drenaje: {str(row[c_vaforo_dren]).strip()}"
+
+        filas_dec.append({
+            "SEMANA": semana_val,
+            "FECHA": fecha_str or datetime.now().strftime("%Y-%m-%d"),
+            "PRODUCTO": "ST" if num_val > 15 else "GB",
+            "SECTOR": f"SECTOR {(num_val - 1) // 6 + 1}",
+            "BLOQ.": str((num_val - 1) % 6 + 1),
+            "VAL": num_val,
+            "VOL_PROG_LT": 160 if num_val > 15 else 180,
+            "#Puls": 3 if num_val > 15 else 4,
+            "VOL.EJ": vol_ej_val,
+            "CE": ce_val,
+            "PH": ph_val,
+            "%DR": dr_num,
+            "OBSERVACIONES": obs
+        })
+
+    return pd.DataFrame(filas_dec)
+
+# --- GENERADOR MULTI-PESTAÑA DE EXCEL CON SEMÁFOROS Y FUNCIONES ---
+
+def generar_excel_estilizado(df_foto: pd.DataFrame, titulo: str, fecha: str = "", notas=None) -> io.BytesIO:
+    """Genera un archivo Excel profesional completo con pestañas DECISION_RIEGO, DASHBOARD, PARAMETROS y DATOS_FOTO."""
     buffer = io.BytesIO()
+    
+    # 1. Mapear datos a Decisión de Riego
+    df_decision = mapear_decision_riego(df_foto, fecha)
+
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name="Datos", startrow=3)
-        ws = writer.sheets["Datos"]
-        ws.views.sheetView[0].showGridLines = True
+        # -------------------------------------------------------------
+        # HOJA 1: DECISION_RIEGO (La pestaña principal con semáforos)
+        # -------------------------------------------------------------
+        wb = writer.book
+        ws_dec = wb.create_sheet(title="DECISION_RIEGO")
+        ws_dec.views.sheetView[0].showGridLines = True
 
-        num_cols = max(len(df.columns), 4)
-        col_fin = get_column_letter(len(df.columns))
-        col_fin_notas = get_column_letter(num_cols)
-
-        # 1. Título principal
-        ws.merge_cells(f"A1:{col_fin}1")
-        ws["A1"] = titulo.upper()
-        ws["A1"].font = Font(name="Segoe UI", size=14, bold=True, color="1F4E78")
-        ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
-        ws.row_dimensions[1].height = 30
-
-        # 2. Subtítulo con fecha y total
-        fecha_texto = f"Fecha: {fecha}  |  " if fecha else ""
-        fecha_gen = datetime.now().strftime("%d/%m/%Y %H:%M")
-        ws.merge_cells(f"A2:{col_fin}2")
-        ws["A2"] = f"{fecha_texto}Total Registros: {len(df)}  |  Generado: {fecha_gen}"
-        ws["A2"].font = Font(name="Segoe UI", size=10, italic=True, color="595959")
-        ws["A2"].alignment = Alignment(horizontal="center", vertical="center")
-        ws.row_dimensions[2].height = 20
-
-        # 3. Encabezados de columna
-        header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-        header_font = Font(name="Segoe UI", size=11, bold=True, color="FFFFFF")
-
-        for col_num in range(1, len(df.columns) + 1):
-            cell = ws.cell(row=4, column=col_num)
-            cell.fill = header_fill
-            cell.font = header_font
-            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        ws.row_dimensions[4].height = 28
-
-        # 4. Bordes y estilo cebra
+        # Estilos comunes
         thin_border = Border(
             left=Side(style='thin', color="D9D9D9"),
             right=Side(style='thin', color="D9D9D9"),
             top=Side(style='thin', color="D9D9D9"),
             bottom=Side(style='thin', color="D9D9D9")
         )
+
+        # Fila 1: Barra de navegación
+        ws_dec["A1"] = '📊 Dashboard'
+        ws_dec["C1"] = '🌱 Decisión Riego'
+        ws_dec["F1"] = '📸 Datos Foto'
+        ws_dec["I1"] = '⚙️ Parámetros Nutrición'
+        for nav_col in ["A1", "C1", "F1", "I1"]:
+            ws_dec[nav_col].font = Font(name="Segoe UI", size=9, bold=True, color="1F4E78")
+
+        # Fila 3 y 4: Tarjetas KPI Superiores
+        kpis = [
+            ("B3", "B4", "Total Válvulas", f"=COUNTA(A7:A{6 + len(df_decision)})", "1F4E78"),
+            ("E3", "E4", "Vol. Total Ejecutado (LT)", f"=SUM(K7:K{6 + len(df_decision)})", "107C41"),
+            ("H3", "H4", "Promedio pH", f"=AVERAGE(M7:M{6 + len(df_decision)})", "8E44AD"),
+            ("K3", "K4", "Promedio CE (dS/m)", f"=AVERAGE(L7:L{6 + len(df_decision)})", "D35400"),
+            ("N3", "N4", "Promedio % Drenaje", f"=AVERAGE(N7:N{6 + len(df_decision)})", "2980B9")
+        ]
+
+        for title_cell, val_cell, kpi_title, kpi_formula, color_hex in kpis:
+            # Título KPI
+            ws_dec[title_cell] = kpi_title
+            ws_dec[title_cell].font = Font(name="Segoe UI", size=8, bold=True, color="595959")
+            ws_dec[title_cell].alignment = Alignment(horizontal="center", vertical="center")
+            
+            # Valor KPI
+            ws_dec[val_cell] = kpi_formula
+            ws_dec[val_cell].font = Font(name="Segoe UI", size=13, bold=True, color=color_hex)
+            ws_dec[val_cell].alignment = Alignment(horizontal="center", vertical="center")
+            ws_dec[val_cell].fill = PatternFill(start_color="F2F5F9", end_color="F2F5F9", fill_type="solid")
+            ws_dec[val_cell].border = thin_border
+            if "%" in kpi_title:
+                ws_dec[val_cell].number_format = "0.0%"
+            elif "Vol" in kpi_title or "Total" in kpi_title:
+                ws_dec[val_cell].number_format = "#,##0"
+            else:
+                ws_dec[val_cell].number_format = "0.00"
+
+        ws_dec.row_dimensions[3].height = 16
+        ws_dec.row_dimensions[4].height = 24
+
+        # Fila 6: Encabezados de la Tabla
+        headers_dec = [
+            "SEMANA", "FECHA", "PRODUCTO", "SECTOR", "BLOQ.", "VAL", 
+            "VOL_PROG_LT", "#Puls", "Lt/Pul", "Vol. Esperado", "VOL.EJ", 
+            "CE", "PH", "%DR", "DE. RIEGO", "10% MAS", "10% MENOS", "OBSERVACIONES"
+        ]
+
+        header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+        header_font = Font(name="Segoe UI", size=10, bold=True, color="FFFFFF")
+
+        for col_idx, h_text in enumerate(headers_dec, 1):
+            c = ws_dec.cell(row=6, column=col_idx, value=h_text)
+            c.fill = header_fill
+            c.font = header_font
+            c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        ws_dec.row_dimensions[6].height = 28
+
+        # Filas 7+: Datos y Fórmulas
+        start_row = 7
+        for i, r_data in df_decision.iterrows():
+            curr_row = start_row + i
+            ws_dec.row_dimensions[curr_row].height = 20
+            
+            val_num = r_data["VAL"]
+            vol_prog = r_data["VOL_PROG_LT"]
+            pulsos = r_data["#Puls"]
+            vol_ej = r_data["VOL.EJ"]
+            ce_val = r_data["CE"]
+            ph_val = r_data["PH"]
+            dr_val = r_data["%DR"]
+
+            # Escribir valores
+            ws_dec.cell(row=curr_row, column=1, value=r_data["SEMANA"]).alignment = Alignment(horizontal="center")
+            ws_dec.cell(row=curr_row, column=2, value=r_data["FECHA"]).alignment = Alignment(horizontal="center")
+            ws_dec.cell(row=curr_row, column=3, value=r_data["PRODUCTO"]).alignment = Alignment(horizontal="center")
+            ws_dec.cell(row=curr_row, column=4, value=r_data["SECTOR"]).alignment = Alignment(horizontal="center")
+            ws_dec.cell(row=curr_row, column=5, value=r_data["BLOQ."]).alignment = Alignment(horizontal="center")
+            ws_dec.cell(row=curr_row, column=6, value=val_num).alignment = Alignment(horizontal="center")
+            ws_dec.cell(row=curr_row, column=7, value=vol_prog).alignment = Alignment(horizontal="center")
+            ws_dec.cell(row=curr_row, column=8, value=pulsos).alignment = Alignment(horizontal="center")
+            
+            # Fórmulas
+            ws_dec.cell(row=curr_row, column=9, value=f"=IF(H{curr_row}>0, G{curr_row}/H{curr_row}, 0)").alignment = Alignment(horizontal="center")
+            ws_dec.cell(row=curr_row, column=10, value=f"=G{curr_row}").alignment = Alignment(horizontal="center")
+            
+            # VOL.EJ
+            c_volej = ws_dec.cell(row=curr_row, column=11, value=vol_ej)
+            c_volej.alignment = Alignment(horizontal="center")
+            
+            # CE
+            c_ce = ws_dec.cell(row=curr_row, column=12, value=ce_val)
+            c_ce.alignment = Alignment(horizontal="center")
+            if isinstance(ce_val, (int, float)):
+                c_ce.number_format = "0.00"
+
+            # PH
+            c_ph = ws_dec.cell(row=curr_row, column=13, value=ph_val)
+            c_ph.alignment = Alignment(horizontal="center")
+            if isinstance(ph_val, (int, float)):
+                c_ph.number_format = "0.0"
+
+            # %DR
+            c_dr = ws_dec.cell(row=curr_row, column=14, value=dr_val)
+            c_dr.alignment = Alignment(horizontal="center")
+            if isinstance(dr_val, (int, float)):
+                c_dr.number_format = "0.0%"
+
+            # DE. RIEGO (Pulsos de Decisión Inteligente)
+            ws_dec.cell(row=curr_row, column=15, value=f'=IF(N{curr_row}="*", "*", IF(N{curr_row}<0.2, 4, IF(N{curr_row}>0.45, 2, 3)))').alignment = Alignment(horizontal="center")
+            
+            # 10% MAS y 10% MENOS
+            ws_dec.cell(row=curr_row, column=16, value=f"=ROUND(G{curr_row}*1.1, 0)").alignment = Alignment(horizontal="center")
+            ws_dec.cell(row=curr_row, column=17, value=f"=ROUND(G{curr_row}*0.9, 0)").alignment = Alignment(horizontal="center")
+            
+            # OBSERVACIONES
+            ws_dec.cell(row=curr_row, column=18, value=r_data["OBSERVACIONES"]).alignment = Alignment(horizontal="left")
+
+            # Bordes y fuente
+            for col_c in range(1, 19):
+                cell_item = ws_dec.cell(row=curr_row, column=col_c)
+                cell_item.border = thin_border
+                cell_item.font = Font(name="Segoe UI", size=9)
+
+            # SEMÁFOROS (Colores visuales automáticos)
+            # 1. Semáforo VOL.EJ vs 10% MAS / 10% MENOS
+            if isinstance(vol_ej, (int, float)) and isinstance(vol_prog, (int, float)):
+                if vol_ej < vol_prog * 0.9:
+                    c_volej.fill = PatternFill(start_color="F8D7DA", end_color="F8D7DA", fill_type="solid") # Rojo (Déficit)
+                elif vol_ej > vol_prog * 1.1:
+                    c_volej.fill = PatternFill(start_color="CCE5FF", end_color="CCE5FF", fill_type="solid") # Azul (Exceso)
+                else:
+                    c_volej.fill = PatternFill(start_color="D4EDDA", end_color="D4EDDA", fill_type="solid") # Verde (Óptimo)
+
+            # 2. Semáforo %DR (20% - 45% Óptimo)
+            if isinstance(dr_val, (int, float)):
+                if dr_val < 0.20:
+                    c_dr.fill = PatternFill(start_color="F8D7DA", end_color="F8D7DA", fill_type="solid") # Rojo (<20%)
+                elif dr_val > 0.45:
+                    c_dr.fill = PatternFill(start_color="CCE5FF", end_color="CCE5FF", fill_type="solid") # Azul (>45%)
+                else:
+                    c_dr.fill = PatternFill(start_color="D4EDDA", end_color="D4EDDA", fill_type="solid") # Verde (20-45%)
+
+            # 3. Semáforo CE (1.4 - 2.2 dS/m Óptimo)
+            if isinstance(ce_val, (int, float)):
+                if ce_val < 1.4:
+                    c_ce.fill = PatternFill(start_color="FFF3CD", end_color="FFF3CD", fill_type="solid") # Amarillo (Baja nutrición)
+                elif ce_val > 2.2:
+                    c_ce.fill = PatternFill(start_color="F8D7DA", end_color="F8D7DA", fill_type="solid") # Rojo (Exceso sales)
+                else:
+                    c_ce.fill = PatternFill(start_color="D4EDDA", end_color="D4EDDA", fill_type="solid") # Verde (1.4 - 2.2)
+
+            # 4. Semáforo pH (5.8 - 6.5 Óptimo)
+            if isinstance(ph_val, (int, float)):
+                if ph_val < 5.8:
+                    c_ph.fill = PatternFill(start_color="F8D7DA", end_color="F8D7DA", fill_type="solid") # Rojo (Ácido)
+                elif ph_val > 6.5:
+                    c_ph.fill = PatternFill(start_color="FFF3CD", end_color="FFF3CD", fill_type="solid") # Amarillo (Alcalino)
+                else:
+                    c_ph.fill = PatternFill(start_color="D4EDDA", end_color="D4EDDA", fill_type="solid") # Verde (Óptimo)
+
+        # Autoajustar anchos en DECISION_RIEGO
+        for col in ws_dec.columns:
+            max_l = max(len(str(cell.value or '')) for cell in col if cell.row >= 6)
+            col_letter = get_column_letter(col[0].column)
+            ws_dec.column_dimensions[col_letter].width = max(max_l + 4, 12)
+
+        # -------------------------------------------------------------
+        # HOJA 2: DATOS_FOTO_DETALLADOS (La tabla exacta de la libreta)
+        # -------------------------------------------------------------
+        df_foto.to_excel(writer, index=False, sheet_name="DATOS_FOTO_DETALLADOS", startrow=3)
+        ws_foto = writer.sheets["DATOS_FOTO_DETALLADOS"]
+        ws_foto.views.sheetView[0].showGridLines = True
+
+        num_cols_f = len(df_foto.columns)
+        col_fin_f = get_column_letter(num_cols_f)
+        col_fin_notas = get_column_letter(max(num_cols_f, 6))
+
+        # Título
+        ws_foto.merge_cells(f"A1:{col_fin_f}1")
+        ws_foto["A1"] = f"{titulo.upper()} (DATOS CRUDOS DIGITALIZADOS)"
+        ws_foto["A1"].font = Font(name="Segoe UI", size=13, bold=True, color="1F4E78")
+        ws_foto["A1"].alignment = Alignment(horizontal="center", vertical="center")
+        ws_foto.row_dimensions[1].height = 28
+
+        # Subtítulo
+        fecha_texto = f"Fecha: {fecha}  |  " if fecha else ""
+        fecha_gen = datetime.now().strftime("%d/%m/%Y %H:%M")
+        ws_foto.merge_cells(f"A2:{col_fin_f}2")
+        ws_foto["A2"] = f"{fecha_texto}Total Registros: {len(df_foto)}  |  Generado: {fecha_gen}"
+        ws_foto["A2"].font = Font(name="Segoe UI", size=9, italic=True, color="595959")
+        ws_foto["A2"].alignment = Alignment(horizontal="center", vertical="center")
+        ws_foto.row_dimensions[2].height = 18
+
+        # Encabezados
+        for col_num in range(1, num_cols_f + 1):
+            cell = ws_foto.cell(row=4, column=col_num)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        ws_foto.row_dimensions[4].height = 26
+
+        # Filas cebra
         zebra_fill = PatternFill(start_color="F2F5F9", end_color="F2F5F9", fill_type="solid")
         white_fill = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
-
-        start_row = 5
-        for row_idx, row in enumerate(ws.iter_rows(min_row=start_row, max_row=start_row + len(df) - 1, min_col=1, max_col=len(df.columns))):
-            ws.row_dimensions[row[0].row].height = 22
+        
+        start_row_f = 5
+        for row_idx, row in enumerate(ws_foto.iter_rows(min_row=start_row_f, max_row=start_row_f + len(df_foto) - 1, min_col=1, max_col=num_cols_f)):
+            ws_foto.row_dimensions[row[0].row].height = 20
             es_par = (row_idx % 2 == 1)
             for col_idx, cell in enumerate(row):
                 cell.border = thin_border
-                cell.font = Font(name="Segoe UI", size=10)
+                cell.font = Font(name="Segoe UI", size=9)
                 cell.fill = zebra_fill if es_par else white_fill
-                
-                # Formato inteligente
-                val_str = str(cell.value or "")
-                if len(val_str) <= 8 or col_idx == 0:
-                    cell.alignment = Alignment(horizontal="center", vertical="center")
-                else:
-                    cell.alignment = Alignment(horizontal="left", vertical="center")
+                val_s = str(cell.value or "")
+                cell.alignment = Alignment(horizontal="center" if len(val_s) <= 8 or col_idx == 0 else "left", vertical="center")
 
-        # 5. Autoajustar ancho de columnas
-        for col in ws.columns:
-            max_len = 0
+        # Autoajustar ancho de foto
+        for col in ws_foto.columns:
+            max_l = 0
             col_letter = get_column_letter(col[0].column)
             for cell in col:
-                if cell.row >= 4 and cell.row < start_row + len(df) and cell.value is not None:
-                    max_len = max(max_len, len(str(cell.value)))
-            ws.column_dimensions[col_letter].width = max(max_len + 5, 14)
+                if cell.row >= 4 and cell.row < start_row_f + len(df_foto) and cell.value is not None:
+                    max_l = max(max_l, len(str(cell.value)))
+            ws_foto.column_dimensions[col_letter].width = max(max_l + 4, 12)
 
-        # 6. SECCIÓN DESTACADA DE EXCEDENTES Y NOTAS (Grande, ordenada y elegante)
-        # Normalizar notas a lista de strings
+        # Sección destacada de Excedentes y Notas al pie
         lista_notas = []
         if isinstance(notas, list):
             lista_notas = [str(n).strip() for n in notas if str(n).strip()]
@@ -426,31 +697,106 @@ def generar_excel_estilizado(df: pd.DataFrame, titulo: str, fecha: str = "", not
             lista_notas = [line.strip() for line in notas.splitlines() if line.strip()]
 
         if lista_notas:
-            fila_separador = start_row + len(df) + 1
-            ws.row_dimensions[fila_separador].height = 14
+            fila_separador = start_row_f + len(df_foto) + 1
+            ws_foto.row_dimensions[fila_separador].height = 14
             
             fila_encabezado_notas = fila_separador + 1
-            ws.merge_cells(f"A{fila_encabezado_notas}:{col_fin_notas}{fila_encabezado_notas}")
-            ws[f"A{fila_encabezado_notas}"] = "📌 MEDICIONES ADICIONALES, EXCEDENTES Y OBSERVACIONES"
-            ws[f"A{fila_encabezado_notas}"].font = Font(name="Segoe UI", size=12, bold=True, color="FFFFFF")
-            ws[f"A{fila_encabezado_notas}"].fill = PatternFill(start_color="2A4D69", end_color="2A4D69", fill_type="solid")
-            ws[f"A{fila_encabezado_notas}"].alignment = Alignment(horizontal="left", vertical="center", indent=1)
-            ws.row_dimensions[fila_encabezado_notas].height = 28
+            ws_foto.merge_cells(f"A{fila_encabezado_notas}:{col_fin_notas}{fila_encabezado_notas}")
+            ws_foto[f"A{fila_encabezado_notas}"] = "📌 MEDICIONES ADICIONALES, EXCEDENTES Y OBSERVACIONES"
+            ws_foto[f"A{fila_encabezado_notas}"].font = Font(name="Segoe UI", size=11, bold=True, color="FFFFFF")
+            ws_foto[f"A{fila_encabezado_notas}"].fill = PatternFill(start_color="2A4D69", end_color="2A4D69", fill_type="solid")
+            ws_foto[f"A{fila_encabezado_notas}"].alignment = Alignment(horizontal="left", vertical="center", indent=1)
+            ws_foto.row_dimensions[fila_encabezado_notas].height = 26
 
             fila_actual = fila_encabezado_notas + 1
             nota_fill_par = PatternFill(start_color="F8FAFC", end_color="F8FAFC", fill_type="solid")
             nota_fill_impar = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
 
             for idx, nota_texto in enumerate(lista_notas):
-                ws.merge_cells(f"A{fila_actual}:{col_fin_notas}{fila_actual}")
-                celda = ws[f"A{fila_actual}"]
+                ws_foto.merge_cells(f"A{fila_actual}:{col_fin_notas}{fila_actual}")
+                celda = ws_foto[f"A{fila_actual}"]
                 celda.value = f"  •   {nota_texto}"
-                celda.font = Font(name="Segoe UI", size=11, color="1E293B", bold=False)
+                celda.font = Font(name="Segoe UI", size=10, color="1E293B", bold=False)
                 celda.fill = nota_fill_par if idx % 2 == 0 else nota_fill_impar
                 celda.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
                 celda.border = thin_border
-                ws.row_dimensions[fila_actual].height = 26
+                ws_foto.row_dimensions[fila_actual].height = 24
                 fila_actual += 1
+
+        # -------------------------------------------------------------
+        # HOJA 3: DASHBOARD_EJECUTIVO (Resumen de Balance y Cumplimiento)
+        # -------------------------------------------------------------
+        ws_dash = wb.create_sheet(title="DASHBOARD_EJECUTIVO")
+        ws_dash.views.sheetView[0].showGridLines = True
+        
+        ws_dash["A1"] = '📊 DASHBOARD EJECUTIVO Y CONTROL DE FERTIRRIEGO'
+        ws_dash["A1"].font = Font(name="Segoe UI", size=14, bold=True, color="1F4E78")
+        ws_dash.row_dimensions[1].height = 26
+
+        # Tarjetas de resumen
+        ws_dash["A3"] = "💧 CONSUMO TOTAL (M³)"
+        ws_dash["A4"] = f"=SUM('DECISION_RIEGO'!K7:K{6 + len(df_decision)})/1000"
+        ws_dash["A4"].number_format = "#,##0.0"
+
+        ws_dash["D3"] = "🎯 % CUMPLIMIENTO GLOBAL"
+        ws_dash["D4"] = f"=SUM('DECISION_RIEGO'!K7:K{6 + len(df_decision)})/SUM('DECISION_RIEGO'!G7:G{6 + len(df_decision)})"
+        ws_dash["D4"].number_format = "0.0%"
+
+        ws_dash["G3"] = "🧪 PROMEDIO pH"
+        ws_dash["G4"] = f"=AVERAGE('DECISION_RIEGO'!M7:M{6 + len(df_decision)})"
+        ws_dash["G4"].number_format = "0.0"
+
+        ws_dash["J3"] = "⚡ PROMEDIO C.E. (dS/m)"
+        ws_dash["J4"] = f"=AVERAGE('DECISION_RIEGO'!L7:L{6 + len(df_decision)})"
+        ws_dash["J4"].number_format = "0.00"
+
+        for col_d in ["A", "D", "G", "J"]:
+            ws_dash[f"{col_d}3"].font = Font(name="Segoe UI", size=8, bold=True, color="595959")
+            ws_dash[f"{col_d}4"].font = Font(name="Segoe UI", size=14, bold=True, color="1F4E78")
+            ws_dash[f"{col_d}4"].fill = PatternFill(start_color="F2F5F9", end_color="F2F5F9", fill_type="solid")
+            ws_dash[f"{col_d}4"].alignment = Alignment(horizontal="center", vertical="center")
+            ws_dash[f"{col_d}4"].border = thin_border
+
+        ws_dash.row_dimensions[3].height = 16
+        ws_dash.row_dimensions[4].height = 25
+
+        # -------------------------------------------------------------
+        # HOJA 4: PARAMETROS_NUTRICION (Reglas de Semáforos y Parámetros)
+        # -------------------------------------------------------------
+        ws_param = wb.create_sheet(title="PARAMETROS_NUTRICION")
+        ws_param.views.sheetView[0].showGridLines = True
+
+        ws_param["A1"] = "⚙️ PARÁMETROS AGRONÓMICOS, NUTRICIÓN Y CÓDIGOS DE DECISIÓN DE RIEGO"
+        ws_param["A1"].font = Font(name="Segoe UI", size=13, bold=True, color="1F4E78")
+
+        headers_p = ["VARIABLE", "ROJO (DÉFICIT / ALERTA)", "VERDE (RANGO ÓPTIMO)", "AZUL / AMARILLO (EXCESO)", "UNIDAD"]
+        for col_p, h_p in enumerate(headers_p, 1):
+            cell_p = ws_param.cell(row=3, column=col_p, value=h_p)
+            cell_p.fill = header_fill
+            cell_p.font = header_font
+            cell_p.alignment = Alignment(horizontal="center", vertical="center")
+        ws_param.row_dimensions[3].height = 24
+
+        param_rows = [
+            ("VOL. EJ (Volumen Ejecutado)", "< 10% MENOS (Déficit / Gotero tapado)", "Entre 10% MENOS y 10% MAS", "> 10% MAS (Exceso / Fuga)", "Litros"),
+            ("Porcentaje de Drenaje (%DR)", "< 20.0% (Riesgo Salinización)", "20.0% - 45.0% (Lavado Óptimo)", "> 45.0% (Desperdicio / Lixiviación)", "%"),
+            ("pH Solución / Drenaje", "< 5.8 (Acidosis)", "5.8 - 6.5 (Asimilación Óptima)", "> 6.5 (Alcalosis / Bloqueo)", "pH"),
+            ("Conductividad Eléctrica (CE)", "< 1.4 dS/m (Baja Nutrición)", "1.4 - 2.2 dS/m (Nutrición Balanceada)", "> 2.2 dS/m (Exceso de Sales)", "dS/m"),
+        ]
+
+        for p_idx, p_data in enumerate(param_rows, 4):
+            for p_c, p_val in enumerate(p_data, 1):
+                c_item = ws_param.cell(row=p_idx, column=p_c, value=p_val)
+                c_item.font = Font(name="Segoe UI", size=9)
+                c_item.border = thin_border
+                c_item.alignment = Alignment(horizontal="center" if p_c > 1 else "left", vertical="center")
+            ws_param.row_dimensions[p_idx].height = 20
+
+        # Autoajustar ancho en parámetros
+        for col in ws_param.columns:
+            max_l = max(len(str(cell.value or '')) for cell in col if cell.row >= 3)
+            col_letter = get_column_letter(col[0].column)
+            ws_param.column_dimensions[col_letter].width = max(max_l + 4, 15)
 
     buffer.seek(0)
     return buffer
@@ -458,10 +804,10 @@ def generar_excel_estilizado(df: pd.DataFrame, titulo: str, fecha: str = "", not
 # --- ACCIÓN PRINCIPAL ---
 
 if archivo_subido is not None:
-    if st.button("🚀 Extraer Datos y Generar Excel", type="primary"):
+    if st.button("🚀 Extraer Datos y Generar Excel con Decisión de Riego", type="primary"):
         bytes_foto = archivo_subido.read()
         
-        with st.spinner("Procesando y reconociendo estructura de la tabla y excedentes..."):
+        with st.spinner("Procesando imagen, mapeando indicadores y calculando semáforos agronómicos..."):
             try:
                 if "IA" in modo:
                     if not api_key_activa:
@@ -472,46 +818,71 @@ if archivo_subido is not None:
                     df_resultado, titulo_doc, fecha_doc, notas_doc = extraer_con_tesseract(bytes_foto)
 
                 if not df_resultado.empty:
-                    st.success(f"¡Se detectaron exitosamente **{len(df_resultado)} filas** y **{len(df_resultado.columns)} columnas**!")
+                    st.success(f"¡Se detectaron exitosamente **{len(df_resultado)} filas** y se generaron los semáforos agronómicos!")
                     
-                    st.subheader(f"📋 {titulo_doc}")
-                    if fecha_doc:
-                        st.caption(f"📅 Fecha detectada: **{fecha_doc}**")
+                    # Mapear a Decisión de Riego
+                    df_decision_vista = mapear_decision_riego(df_resultado, fecha_doc)
 
-                    # Tabla interactiva editable por el usuario
-                    st.markdown("##### 📊 Tabla Principal de Datos")
-                    st.caption("💡 *Puedes hacer doble clic en cualquier celda para corregirla antes de descargar:*")
-                    df_editado = st.data_editor(df_resultado, use_container_width=True, height=400)
+                    # Pestañas interactivas en la App
+                    tab_dec, tab_foto, tab_notas = st.tabs([
+                        "🌱 Hoja Decisión de Riego (Semáforos y Funciones)", 
+                        "📸 Datos Crudos de la Foto", 
+                        "📌 Excedentes y Observaciones"
+                    ])
 
-                    # Sección destacada de Excedentes y Notas
-                    notas_formateadas = []
-                    if isinstance(notas_doc, list):
-                        notas_formateadas = notas_doc
-                    elif isinstance(notas_doc, str) and notas_doc.strip():
-                        notas_formateadas = [n.strip() for n in notas_doc.splitlines() if n.strip()]
+                    with tab_dec:
+                        st.markdown("##### 🚦 Tabla Oficial de Decisión de Riego")
+                        st.caption("💡 *Incluye fórmulas automáticas (Lt/Pul, DE. RIEGO, 10% MAS/MENOS) y semáforos por rangos:*")
+                        
+                        # Mostrar métricas resumen
+                        m1, m2, m3, m4 = st.columns(4)
+                        m1.metric("Total Válvulas", len(df_decision_vista))
+                        
+                        # Promedios numéricos seguros
+                        ce_nums = pd.to_numeric(df_decision_vista["CE"], errors='coerce').dropna()
+                        ph_nums = pd.to_numeric(df_decision_vista["PH"], errors='coerce').dropna()
+                        dr_nums = pd.to_numeric(df_decision_vista["%DR"], errors='coerce').dropna()
+
+                        if not ce_nums.empty:
+                            m2.metric("Promedio C.E.", f"{ce_nums.mean():.2f} dS/m")
+                        if not ph_nums.empty:
+                            m3.metric("Promedio pH", f"{ph_nums.mean():.1f}")
+                        if not dr_nums.empty:
+                            m4.metric("Promedio Drenaje", f"{dr_nums.mean() * 100:.1f}%" if dr_nums.mean() <= 1 else f"{dr_nums.mean():.1f}%")
+
+                        df_decision_editado = st.data_editor(df_decision_vista, use_container_width=True, height=380)
+
+                    with tab_foto:
+                        st.markdown("##### 📋 Datos Extraídos Directamente de la Imagen")
+                        df_foto_editado = st.data_editor(df_resultado, use_container_width=True, height=380)
+
+                    with tab_notas:
+                        st.markdown("##### 📌 Mediciones Adicionales, Excedentes y Observaciones al Pie")
+                        notas_formateadas = []
+                        if isinstance(notas_doc, list):
+                            notas_formateadas = notas_doc
+                        elif isinstance(notas_doc, str) and notas_doc.strip():
+                            notas_formateadas = [n.strip() for n in notas_doc.splitlines() if n.strip()]
+
+                        texto_notas_default = "\n".join([f"• {n}" if not n.startswith("•") else n for n in notas_formateadas])
+                        notas_editadas = st.text_area(
+                            "Edita o añade notas y excedentes (aparecerán con formato grande y ordenado en el Excel):",
+                            value=texto_notas_default,
+                            height=140
+                        )
+                        notas_finales = [n.replace("•", "").strip() for n in notas_editadas.splitlines() if n.strip()]
+
+                    # Generar Excel completo con todas las pestañas y semáforos
+                    buffer_excel = generar_excel_estilizado(df_foto_editado, titulo_doc, fecha_doc, notas_finales)
+                    nombre_final = f"{nombre_archivo.strip() or 'Reporte_Decision_Riego'}.xlsx"
 
                     st.markdown("---")
-                    st.markdown("##### 📌 Mediciones Adicionales, Excedentes y Observaciones")
-                    texto_notas_default = "\n".join([f"• {n}" if not n.startswith("•") else n for n in notas_formateadas])
-                    
-                    notas_editadas = st.text_area(
-                        "Edita o añade notas y excedentes (cada línea aparecerá como un punto en el Excel):",
-                        value=texto_notas_default,
-                        height=140,
-                        help="Cada renglón que escribas aquí se incluirá formateado en grande y ordenado en el archivo Excel final."
-                    )
-
-                    notas_finales = [n.replace("•", "").strip() for n in notas_editadas.splitlines() if n.strip()]
-
-                    # Generar Excel con diseño profesional
-                    buffer_excel = generar_excel_estilizado(df_editado, titulo_doc, fecha_doc, notas_finales)
-                    nombre_final = f"{nombre_archivo.strip() or 'Reporte'}.xlsx"
-
                     st.download_button(
-                        label="📥 Descargar archivo Excel Profesional (con Excedentes)",
+                        label="📥 Descargar Libro Excel Completo (con Semáforos, Decisión de Riego y Dashboard)",
                         data=buffer_excel,
                         file_name=nombre_final,
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        type="primary"
                     )
                 else:
                     st.error("No se pudieron reconocer datos en la imagen. Verifica que la foto sea legible.")
