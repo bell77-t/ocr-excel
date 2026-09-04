@@ -10,6 +10,9 @@ import os
 from datetime import datetime
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+import os
+
+api_key = os.getenv("GEMINI_API_KEY")
 
 # --- GESTIÓN SEGURA Y PERSISTENTE DE LA API KEY ---
 CONFIG_FILE = "config_secret.json"
