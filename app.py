@@ -90,20 +90,140 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Ocultar la barra lateral completamente para una interfaz limpia
+# Inyección de estilos CSS modernos (Estilo Glassmorphism Dashboard / Info Cards)
 st.markdown("""
     <style>
-        [data-testid="stSidebar"] {
-            display: none;
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+
+        /* Ocultar barra lateral */
+        [data-testid="stSidebar"] { display: none; }
+        [data-testid="collapsedControl"] { display: none; }
+        
+        /* Tipografía global */
+        html, body, [class*="css"] {
+            font-family: 'Plus Jakarta Sans', sans-serif;
         }
-        [data-testid="collapsedControl"] {
-            display: none;
+
+        /* Hero Banner */
+        .hero-container {
+            background: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.85) 100%);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 20px;
+            padding: 28px 32px;
+            margin-bottom: 24px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+        }
+
+        .hero-title {
+            font-size: 32px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #38BDF8 0%, #818CF8 50%, #C084FC 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+        }
+
+        .hero-subtitle {
+            color: #94A3B8;
+            font-size: 15px;
+            font-weight: 400;
+            line-height: 1.5;
+            margin-bottom: 16px;
+        }
+
+        .badge-pill {
+            display: inline-flex;
+            align-items: center;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-right: 8px;
+            margin-bottom: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .badge-blue { background: rgba(56, 189, 248, 0.12); color: #38BDF8; border-color: rgba(56, 189, 248, 0.3); }
+        .badge-purple { background: rgba(192, 132, 252, 0.12); color: #C084FC; border-color: rgba(192, 132, 252, 0.3); }
+        .badge-green { background: rgba(52, 211, 153, 0.12); color: #34D399; border-color: rgba(52, 211, 153, 0.3); }
+
+        /* Card Container */
+        .glass-card {
+            background: linear-gradient(135deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.7) 100%);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        .glass-card:hover {
+            border-color: rgba(129, 140, 248, 0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Botones personalizados */
+        .stButton>button[kind="primary"] {
+            background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%) !important;
+            color: #FFFFFF !important;
+            border: none !important;
+            border-radius: 12px !important;
+            padding: 12px 24px !important;
+            font-weight: 700 !important;
+            font-size: 15px !important;
+            box-shadow: 0 4px 15px rgba(79, 70, 229, 0.4) !important;
+            transition: all 0.3s ease !important;
+        }
+
+        .stButton>button[kind="primary"]:hover {
+            transform: translateY(-2px) !important;
+            box-shadow: 0 8px 25px rgba(124, 58, 237, 0.5) !important;
+        }
+
+        /* Pestañas modernas */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 8px;
+            background-color: transparent;
+            padding-bottom: 8px;
+        }
+
+        .stTabs [data-baseweb="tab"] {
+            border-radius: 10px;
+            padding: 8px 18px;
+            font-weight: 600;
+            background: rgba(30, 41, 59, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            color: #94A3B8;
+        }
+
+        .stTabs [aria-selected="true"] {
+            background: linear-gradient(135deg, rgba(79, 70, 229, 0.2) 0%, rgba(124, 58, 237, 0.25) 100%) !important;
+            border-color: #818CF8 !important;
+            color: #FFFFFF !important;
         }
     </style>
 """, unsafe_allow_html=True)
 
-st.title("📊 Extractor Universal de Planillas y Tablas a Excel")
-st.write("Convierte **cualquier foto** (manuscrita o impresa, con cualquier título o número de columnas) en un archivo **Excel profesional y editable**.")
+# Render del Hero Header estilo Dashboard
+st.markdown("""
+    <div class="hero-container">
+        <div class="hero-title">📊 Extractor Universal de Planillas a Excel</div>
+        <div class="hero-subtitle">
+            Digitaliza <b>cualquier foto de cuaderno de campo, planilla de riego o tabla impresa</b> y transfórmala al instante en un <b>Libro Excel Profesional con semáforos agronómicos y fórmulas automáticas</b>.
+        </div>
+        <div>
+            <span class="badge-pill badge-blue">⚡ Motor IA con Visión Multimodal</span>
+            <span class="badge-pill badge-green">🌱 Decisión de Riego & Semáforos</span>
+            <span class="badge-pill badge-purple">📈 Dashboard Ejecutivo & Fórmulas</span>
+        </div>
+    </div>
+""", unsafe_allow_html=True)
 
 # Cargar API Key automáticamente
 api_key_activa = cargar_api_key()
@@ -112,18 +232,18 @@ modo = "🤖 IA con Visión (Recomendado)"
 if not api_key_activa:
     st.warning("⚠️ No se detectó ninguna API Key configurada. Puedes pegarla en la primera línea de `app.py` (`MI_API_KEY_DIRECTA = '...'`) o en `config_api_key.py`.")
 
-st.markdown("---")
-
-# Subir archivo
+# Subir archivo en tarjeta visual moderna
 col_izq, col_der = st.columns([1, 1])
 
 with col_izq:
-    archivo_subido = st.file_uploader("📂 Sube la foto del documento (JPG, PNG)", type=["jpg", "jpeg", "png"])
-    nombre_archivo = st.text_input("Nombre para el archivo Excel (opcional):", value="Reporte_Digitalizado")
+    st.markdown("##### 📂 Subir Foto del Documento")
+    archivo_subido = st.file_uploader("Arrastra o selecciona la foto (JPG, PNG)", type=["jpg", "jpeg", "png"], label_visibility="collapsed")
+    nombre_archivo = st.text_input("🏷️ Nombre para el archivo Excel descargado (opcional):", value="Reporte_Digitalizado")
 
 if archivo_subido is not None:
     with col_der:
-        st.image(archivo_subido, caption="Vista previa del documento", use_container_width=True)
+        st.markdown("##### 🖼️ Vista Previa de la Imagen")
+        st.image(archivo_subido, use_container_width=True)
 
 # --- FUNCIONES DE EXTRACCIÓN ---
 
@@ -837,21 +957,64 @@ if archivo_subido is not None:
                         st.markdown("##### 🚦 Tabla Oficial de Decisión de Riego")
                         st.caption("💡 *Incluye fórmulas automáticas (Lt/Pul, DE. RIEGO, 10% MAS/MENOS) y semáforos por rangos:*")
                         
-                        # Mostrar métricas resumen
-                        m1, m2, m3, m4 = st.columns(4)
-                        m1.metric("Total Válvulas", len(df_decision_vista))
-                        
                         # Promedios numéricos seguros
                         ce_nums = pd.to_numeric(df_decision_vista["CE"], errors='coerce').dropna()
                         ph_nums = pd.to_numeric(df_decision_vista["PH"], errors='coerce').dropna()
                         dr_nums = pd.to_numeric(df_decision_vista["%DR"], errors='coerce').dropna()
 
-                        if not ce_nums.empty:
-                            m2.metric("Promedio C.E.", f"{ce_nums.mean():.2f} dS/m")
-                        if not ph_nums.empty:
-                            m3.metric("Promedio pH", f"{ph_nums.mean():.1f}")
-                        if not dr_nums.empty:
-                            m4.metric("Promedio Drenaje", f"{dr_nums.mean() * 100:.1f}%" if dr_nums.mean() <= 1 else f"{dr_nums.mean():.1f}%")
+                        # Tarjetas Info KPI estilo Dashboard / Donation
+                        c_kpi1, c_kpi2, c_kpi3, c_kpi4 = st.columns(4)
+                        
+                        with c_kpi1:
+                            st.markdown(f"""
+                                <div class="glass-card" style="padding: 16px 20px; margin-bottom: 16px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                        <span style="font-size: 12px; font-weight: 700; color: #94A3B8; letter-spacing: 0.5px;">TOTAL VÁLVULAS</span>
+                                        <span style="background: rgba(56, 189, 248, 0.15); color: #38BDF8; padding: 6px 10px; border-radius: 12px; font-size: 16px;">🌱</span>
+                                    </div>
+                                    <div style="font-size: 28px; font-weight: 800; color: #FFFFFF;">{len(df_decision_vista)}</div>
+                                    <div style="font-size: 11px; color: #64748B; margin-top: 4px;">Válvulas registradas</div>
+                                </div>
+                            """, unsafe_allow_html=True)
+
+                        with c_kpi2:
+                            ce_str = f"{ce_nums.mean():.2f} <span style='font-size:14px; font-weight:500;'>dS/m</span>" if not ce_nums.empty else "N/A"
+                            st.markdown(f"""
+                                <div class="glass-card" style="padding: 16px 20px; margin-bottom: 16px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                        <span style="font-size: 12px; font-weight: 700; color: #94A3B8; letter-spacing: 0.5px;">PROMEDIO C.E.</span>
+                                        <span style="background: rgba(251, 191, 36, 0.15); color: #FBBF24; padding: 6px 10px; border-radius: 12px; font-size: 16px;">⚡</span>
+                                    </div>
+                                    <div style="font-size: 28px; font-weight: 800; color: #FBBF24;">{ce_str}</div>
+                                    <div style="font-size: 11px; color: #64748B; margin-top: 4px;">Conductividad eléctrica</div>
+                                </div>
+                            """, unsafe_allow_html=True)
+
+                        with c_kpi3:
+                            ph_str = f"{ph_nums.mean():.1f}" if not ph_nums.empty else "N/A"
+                            st.markdown(f"""
+                                <div class="glass-card" style="padding: 16px 20px; margin-bottom: 16px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                        <span style="font-size: 12px; font-weight: 700; color: #94A3B8; letter-spacing: 0.5px;">PROMEDIO pH</span>
+                                        <span style="background: rgba(192, 132, 252, 0.15); color: #C084FC; padding: 6px 10px; border-radius: 12px; font-size: 16px;">🧪</span>
+                                    </div>
+                                    <div style="font-size: 28px; font-weight: 800; color: #C084FC;">{ph_str}</div>
+                                    <div style="font-size: 11px; color: #64748B; margin-top: 4px;">Acidez / Alcalinidad</div>
+                                </div>
+                            """, unsafe_allow_html=True)
+
+                        with c_kpi4:
+                            dr_str = (f"{dr_nums.mean() * 100:.1f}%" if dr_nums.mean() <= 1 else f"{dr_nums.mean():.1f}%") if not dr_nums.empty else "N/A"
+                            st.markdown(f"""
+                                <div class="glass-card" style="padding: 16px 20px; margin-bottom: 16px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                        <span style="font-size: 12px; font-weight: 700; color: #94A3B8; letter-spacing: 0.5px;">PROM. DRENAJE</span>
+                                        <span style="background: rgba(52, 211, 153, 0.15); color: #34D399; padding: 6px 10px; border-radius: 12px; font-size: 16px;">🌊</span>
+                                    </div>
+                                    <div style="font-size: 28px; font-weight: 800; color: #34D399;">{dr_str}</div>
+                                    <div style="font-size: 11px; color: #64748B; margin-top: 4px;">Lavado y retención hídrica</div>
+                                </div>
+                            """, unsafe_allow_html=True)
 
                         df_decision_editado = st.data_editor(df_decision_vista, use_container_width=True, height=380)
 
