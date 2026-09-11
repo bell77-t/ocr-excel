@@ -90,7 +90,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Inyección de estilos CSS modernos (Estilo Glassmorphism Dashboard / Info Cards)
+# Inyección de estilos CSS modernos (Fondo Ambiental Glassmorphism / Info Cards)
 st.markdown("""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
@@ -104,16 +104,27 @@ st.markdown("""
             font-family: 'Plus Jakarta Sans', sans-serif;
         }
 
+        /* FONDO GLOBAL AMBIENTAL (Estilo Dashboard Premium) */
+        .stApp {
+            background: 
+                radial-gradient(circle at 10% 15%, rgba(79, 70, 229, 0.18) 0%, transparent 35%),
+                radial-gradient(circle at 90% 10%, rgba(56, 189, 248, 0.15) 0%, transparent 30%),
+                radial-gradient(circle at 85% 85%, rgba(16, 185, 129, 0.12) 0%, transparent 35%),
+                radial-gradient(circle at 50% 50%, rgba(139, 92, 246, 0.08) 0%, transparent 50%),
+                #090D16 !important;
+            color: #F1F5F9;
+        }
+
         /* Hero Banner */
         .hero-container {
             background: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.85) 100%);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
             border: 1px solid rgba(255, 255, 255, 0.08);
             border-radius: 20px;
             padding: 28px 32px;
             margin-bottom: 24px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
         }
 
         .hero-title {
@@ -152,24 +163,62 @@ st.markdown("""
 
         /* Card Container */
         .glass-card {
-            background: linear-gradient(135deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.7) 100%);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.06);
+            background: linear-gradient(135deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.75) 100%);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
             border-radius: 16px;
             padding: 20px;
             margin-bottom: 20px;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
             transition: all 0.3s ease;
         }
 
         .glass-card:hover {
-            border-color: rgba(129, 140, 248, 0.3);
+            border-color: rgba(129, 140, 248, 0.35);
             transform: translateY(-2px);
-            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
         }
 
-        /* Botones personalizados */
-        .stButton>button[kind="primary"] {
+        /* File Uploader moderno */
+        [data-testid="stFileUploader"] {
+            background: rgba(15, 23, 42, 0.6) !important;
+            border: 2px dashed rgba(99, 102, 241, 0.35) !important;
+            border-radius: 16px !important;
+            padding: 16px !important;
+            transition: all 0.3s ease !important;
+        }
+
+        [data-testid="stFileUploader"]:hover {
+            border-color: #818CF8 !important;
+            background: rgba(30, 41, 59, 0.75) !important;
+            box-shadow: 0 0 20px rgba(99, 102, 241, 0.25) !important;
+        }
+
+        /* Inputs de Texto Glass */
+        .stTextInput > div > div > input {
+            background: rgba(15, 23, 42, 0.7) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            border-radius: 12px !important;
+            color: #F8FAFC !important;
+            padding: 10px 14px !important;
+            transition: all 0.3s ease !important;
+        }
+
+        .stTextInput > div > div > input:focus {
+            border-color: #818CF8 !important;
+            box-shadow: 0 0 15px rgba(129, 140, 248, 0.3) !important;
+        }
+
+        /* Textarea Glass */
+        .stTextArea textarea {
+            background: rgba(15, 23, 42, 0.7) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            border-radius: 12px !important;
+            color: #F8FAFC !important;
+        }
+
+        /* Botones personalizados con Glow */
+        .stButton > button[kind="primary"] {
             background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%) !important;
             color: #FFFFFF !important;
             border: none !important;
@@ -181,7 +230,7 @@ st.markdown("""
             transition: all 0.3s ease !important;
         }
 
-        .stButton>button[kind="primary"]:hover {
+        .stButton > button[kind="primary"]:hover {
             transform: translateY(-2px) !important;
             box-shadow: 0 8px 25px rgba(124, 58, 237, 0.5) !important;
         }
@@ -203,7 +252,7 @@ st.markdown("""
         }
 
         .stTabs [aria-selected="true"] {
-            background: linear-gradient(135deg, rgba(79, 70, 229, 0.2) 0%, rgba(124, 58, 237, 0.25) 100%) !important;
+            background: linear-gradient(135deg, rgba(79, 70, 229, 0.25) 0%, rgba(124, 58, 237, 0.3) 100%) !important;
             border-color: #818CF8 !important;
             color: #FFFFFF !important;
         }
