@@ -86,61 +86,31 @@ pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tessera
 st.set_page_config(
     page_title="Extractor Universal de Tablas a Excel",
     page_icon="📊",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="collapsed"
 )
+
+# Ocultar la barra lateral completamente para una interfaz limpia
+st.markdown("""
+    <style>
+        [data-testid="stSidebar"] {
+            display: none;
+        }
+        [data-testid="collapsedControl"] {
+            display: none;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
 st.title("📊 Extractor Universal de Planillas y Tablas a Excel")
 st.write("Convierte **cualquier foto** (manuscrita o impresa, con cualquier título o número de columnas) en un archivo **Excel profesional y editable**.")
 
-# --- BARRA LATERAL: Configuración y Seguridad ---
-api_key_guardada = cargar_api_key()
+# Cargar API Key automáticamente
+api_key_activa = cargar_api_key()
+modo = "🤖 IA con Visión (Recomendado)"
 
-with st.sidebar:
-    st.header("⚙️ Motor de Reconocimiento")
-    modo = st.radio(
-        "Selecciona el método de extracción:",
-        [
-            "🤖 IA con Visión (Recomendado)",
-            "⚡ Motor Local Tesseract (Offline)"
-        ],
-        index=0,
-        help="La IA con Visión entiende escritura a mano, cualquier título y operaciones matemáticas. Tesseract funciona sin internet para tablas impresas simples."
-    )
-    
-    api_key_activa = api_key_guardada
-
-    if "IA" in modo:
-        st.markdown("---")
-        st.subheader("🔑 Seguridad de la API Key")
-        
-        if api_key_guardada:
-            st.success("🔒 **Clave API Guardada y Protegida**")
-            # Mostrar solo los últimos 4 caracteres para confirmación sin exponerla
-            preview_key = f"••••••••••••••••••••••••{api_key_guardada[-4:]}" if len(api_key_guardada) >= 4 else "••••••••••••"
-            st.text_input("Estado de la Llave:", value=preview_key, disabled=True, help="Tu llave está guardada de forma segura en el sistema y protegida contra edición accidental.")
-            
-            with st.expander("⚙️ Reconfigurar / Cambiar Clave"):
-                nueva_llave = st.text_input("Ingresar nueva clave:", type="password", key="input_nueva_llave")
-                if st.button("💾 Actualizar y Guardar Nueva Clave"):
-                    if nueva_llave.strip():
-                        guardar_api_key(nueva_llave)
-                        st.success("¡Clave actualizada con éxito! Recargando...")
-                        st.rerun()
-        else:
-            st.warning("⚠️ No hay ninguna Clave API guardada.")
-            clave_ingresada = st.text_input(
-                "Ingresa tu Google Gemini API Key:",
-                type="password",
-                help="Obtén tu clave gratis en https://aistudio.google.com"
-            )
-            if st.button("💾 Guardar y Proteger Clave Permanentemente"):
-                if clave_ingresada.strip():
-                    guardar_api_key(clave_ingresada)
-                    st.success("¡Clave guardada y protegida con éxito!")
-                    st.rerun()
-                else:
-                    st.error("Por favor escribe una clave válida.")
-            api_key_activa = clave_ingresada
+if not api_key_activa:
+    st.warning("⚠️ No se detectó ninguna API Key configurada. Puedes pegarla en la primera línea de `app.py` (`MI_API_KEY_DIRECTA = '...'`) o en `config_api_key.py`.")
 
 st.markdown("---")
 
