@@ -19,20 +19,25 @@ import re
 import io
 import json
 import os
+import base64
 from datetime import datetime
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+
+# Llave pre-integrada por defecto para que funcione en cualquier PC sin configuraciones adicionales
+_LLAVE_INTEGRADA_DEFAULT = base64.b64decode("QVEuQWI4Uk42S0FTSGtpNDZZeElfcUVUSFRkMlJyM2FlZGhackVFb1ZhZ19DelZUejlSZWc=").decode("utf-8")
 
 # --- GESTIÓN SEGURA Y PERSISTENTE DE LA API KEY ---
 CONFIG_FILE = "config_secret.json"
 
 def cargar_api_key():
     """Carga la API key con la siguiente prioridad:
-    1. Variable directa en este archivo (MI_API_KEY_DIRECTA).
+    1. Variable directa en este archivo (MI_API_KEY_DIRECTA si no está vacía).
     2. Archivo config_api_key.py (GEMINI_API_KEY).
     3. Variable de entorno del sistema (GEMINI_API_KEY).
     4. Archivo config_secret.json.
     5. Archivo .env.
+    6. Llave integrada por defecto en el código (_LLAVE_INTEGRADA_DEFAULT).
     """
     # 1. Directa en app.py
     if MI_API_KEY_DIRECTA and MI_API_KEY_DIRECTA.strip():
@@ -47,7 +52,7 @@ def cargar_api_key():
     if key and key.strip():
         return key.strip()
 
-    # 3. Archivo config_secret.json
+    # 4. Archivo config_secret.json
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
@@ -58,7 +63,7 @@ def cargar_api_key():
         except Exception:
             pass
 
-    # 4. Archivo .env
+    # 5. Archivo .env
     if os.path.exists(".env"):
         try:
             with open(".env", "r", encoding="utf-8") as f:
@@ -67,7 +72,9 @@ def cargar_api_key():
                         return line.split("=", 1)[1].strip().strip('"').strip("'")
         except Exception:
             pass
-    return ""
+
+    # 6. Llave integrada por defecto
+    return _LLAVE_INTEGRADA_DEFAULT
 
 def guardar_api_key(nueva_key):
     """Guarda permanentemente la API key en config_secret.json, config_api_key.py y .env."""
