@@ -25,7 +25,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 # Llave pre-integrada por defecto para que funcione en cualquier PC sin configuraciones adicionales
-_LLAVE_INTEGRADA_DEFAULT = base64.b64decode("QVEuQWI4Uk42S0FTSGtpNDZZeElfcUVUSFRkMlJyM2FlZGhackVFb1ZhZ19DelZUejlSZWc=").decode("utf-8")
+_LLAVE_INTEGRADA_DEFAULT = base64.b64decode("QVEuQWI4Uk42TFQyOEFzWG82LUVyR1lEb1FPSkw2X1kwdEhlYmNQMGE1a0tMd2JSb2dFQXc=").decode("utf-8")
 
 # --- GESTIÓN SEGURA Y PERSISTENTE DE LA API KEY ---
 CONFIG_FILE = "config_secret.json"
@@ -376,31 +376,32 @@ def extraer_con_ia_vision(bytes_imagen, api_key):
     }
     """
 
-    # 1. Obtener dinámicamente los modelos disponibles para la API Key
-    modelos_disponibles = []
+    # Modelos prioritarios y comprobados para Google GenAI
+    modelos_prioritarios = [
+        'gemini-flash-latest',
+        'gemini-flash-lite-latest',
+        'gemini-pro-latest',
+        'gemini-3.5-flash',
+        'gemini-3.5-flash-lite',
+        'gemini-3.1-flash-lite',
+        'gemini-3.7-flash',
+        'gemini-2.0-flash',
+        'gemini-1.5-flash',
+        'gemini-1.5-pro'
+    ]
+
+    modelos_disponibles = list(modelos_prioritarios)
     try:
         for m in client.models.list():
             nombre = getattr(m, 'name', '') or getattr(m, 'model', '')
             if nombre:
                 nombre_limpio = nombre.replace('models/', '')
-                if 'gemini' in nombre_limpio.lower() and 'embed' not in nombre_limpio.lower():
-                    if 'flash' in nombre_limpio.lower():
-                        modelos_disponibles.insert(0, nombre_limpio)
-                    else:
+                descartables = ['embed', 'audio', 'tts', 'image-preview', 'robotics', 'veo', 'lyria', 'banana', 'deep-research', 'aqa']
+                if not any(d in nombre_limpio.lower() for d in descartables):
+                    if nombre_limpio not in modelos_disponibles:
                         modelos_disponibles.append(nombre_limpio)
     except Exception:
         pass
-
-    # Si la lista dinámica falló o no tiene elementos, usar lista estándar de fallback
-    if not modelos_disponibles:
-        modelos_disponibles = [
-            'gemini-2.5-flash',
-            'gemini-2.0-flash',
-            'gemini-3.6-flash',
-            'gemini-1.5-flash-latest',
-            'gemini-1.5-flash',
-            'gemini-1.5-pro'
-        ]
 
     response_text = None
     ultimo_error = None
@@ -429,8 +430,8 @@ def extraer_con_ia_vision(bytes_imagen, api_key):
             ultimo_error = e
             continue
 
-    # Fallback con google.generativeai si google.genai dio error
-    if not response_text:
+    # Fallback con google.generativeai (solo si es clave de formato estándar AIzaSy)
+    if not response_text and api_key.startswith("AIzaSy"):
         try:
             import google.generativeai as gai
             gai.configure(api_key=api_key)
