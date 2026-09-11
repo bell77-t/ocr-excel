@@ -1,9 +1,14 @@
 # ==============================================================================
-# 🔑 CONFIGURACIÓN DIRECTA DE TU API KEY DE GOOGLE GEMINI
-# Pega aquí directamente tu API Key entre las comillas si deseas dejarla en el código:
+# 🔑 PEGA TU API KEY DE GOOGLE GEMINI AQUÍ DIRECTAMENTE:
 # ==============================================================================
 MI_API_KEY_DIRECTA = ""  # <-- PEGA TU LLAVE AQUÍ (Ejemplo: "AIzaSy...")
 # ==============================================================================
+
+# Intentar cargar desde el archivo config_api_key.py si existe
+try:
+    from config_api_key import GEMINI_API_KEY as KEY_FROM_CONFIG
+except Exception:
+    KEY_FROM_CONFIG = ""
 
 import streamlit as st
 import cv2
@@ -23,16 +28,21 @@ CONFIG_FILE = "config_secret.json"
 
 def cargar_api_key():
     """Carga la API key con la siguiente prioridad:
-    1. Variable directa en el código (MI_API_KEY_DIRECTA).
-    2. Variable de entorno del sistema (GEMINI_API_KEY).
-    3. Archivo config_secret.json.
-    4. Archivo .env.
+    1. Variable directa en este archivo (MI_API_KEY_DIRECTA).
+    2. Archivo config_api_key.py (GEMINI_API_KEY).
+    3. Variable de entorno del sistema (GEMINI_API_KEY).
+    4. Archivo config_secret.json.
+    5. Archivo .env.
     """
-    # 1. Directa en el código
+    # 1. Directa en app.py
     if MI_API_KEY_DIRECTA and MI_API_KEY_DIRECTA.strip():
         return MI_API_KEY_DIRECTA.strip()
 
-    # 2. Variable de entorno
+    # 2. Desde config_api_key.py
+    if KEY_FROM_CONFIG and KEY_FROM_CONFIG.strip():
+        return KEY_FROM_CONFIG.strip()
+
+    # 3. Variable de entorno
     key = os.environ.get("GEMINI_API_KEY", "")
     if key and key.strip():
         return key.strip()

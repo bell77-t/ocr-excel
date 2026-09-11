@@ -1,6 +1,7 @@
 # Archivos de configuración y secretos (MUY IMPORTANTE)
 .env
 config_secret.json
+config_api_key.py
 secrets.toml
 .streamlit/secrets.toml
 
