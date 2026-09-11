@@ -47,15 +47,30 @@ Si deseas usar el modo local sin internet, descarga e instala [Tesseract OCR par
 
 ## ▶️ Uso de la Aplicación
 
-1. Inicia el servidor de Streamlit:
-```bash
-streamlit run app.py
+## 🔑 Configuración de la API Key de Gemini
+
+Tienes dos formas muy sencillas de configurar tu API Key:
+
+1. **Directamente en el código:** Abre `app.py` y en la primera línea pega tu clave:
+   ```python
+   MI_API_KEY_DIRECTA = "AIzaSy..."  # <-- Pega tu llave aquí
+   ```
+2. **Desde la interfaz web:** Al abrir la aplicación en tu navegador, ingresa tu API Key en la barra lateral izquierda y presiona **"Guardar y Proteger Clave"**.
+
+---
+
+## 📂 Estructura Limpia del Proyecto
+
+```text
+ocr-excel/
+├── app.py              # Aplicación principal Web (Streamlit + IA Visión + Decisión de Riego)
+├── main.py             # Script local para procesamiento rápido por consola
+├── Hoja.jpeg           # Imagen de prueba (Planilla de ejemplo)
+├── requirements.txt    # Dependencias del proyecto
+├── README.md           # Documentación del proyecto
+├── .gitignore          # Filtro de seguridad para archivos privados (.env, claves, temporales)
+└── config_secret.json  # Almacén local seguro de tu API Key (no se sube a GitHub)
 ```
-2. En tu navegador:
-   * Sube la foto de tu documento (JPG, PNG).
-   * En el modo IA, ingresa tu API Key gratuita de Google AI Studio (solo la primera vez, luego queda guardada de forma segura).
-   * Haz clic en **"🚀 Extraer Datos y Generar Excel"**.
-   * Revisa la tabla interactiva y descarga tu reporte Excel.
 
 ---
 

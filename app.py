@@ -1,3 +1,10 @@
+# ==============================================================================
+# 🔑 CONFIGURACIÓN DIRECTA DE TU API KEY DE GOOGLE GEMINI
+# Pega aquí directamente tu API Key entre las comillas si deseas dejarla en el código:
+# ==============================================================================
+MI_API_KEY_DIRECTA = ""  # <-- PEGA TU LLAVE AQUÍ (Ejemplo: "AIzaSy...")
+# ==============================================================================
+
 import streamlit as st
 import cv2
 import pytesseract
@@ -10,25 +17,38 @@ import os
 from datetime import datetime
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
-import os
-
-api_key = os.getenv("GEMINI_API_KEY")
 
 # --- GESTIÓN SEGURA Y PERSISTENTE DE LA API KEY ---
 CONFIG_FILE = "config_secret.json"
 
 def cargar_api_key():
-    """Carga la API key desde config_secret.json, .env o variable de entorno."""
+    """Carga la API key con la siguiente prioridad:
+    1. Variable directa en el código (MI_API_KEY_DIRECTA).
+    2. Variable de entorno del sistema (GEMINI_API_KEY).
+    3. Archivo config_secret.json.
+    4. Archivo .env.
+    """
+    # 1. Directa en el código
+    if MI_API_KEY_DIRECTA and MI_API_KEY_DIRECTA.strip():
+        return MI_API_KEY_DIRECTA.strip()
+
+    # 2. Variable de entorno
     key = os.environ.get("GEMINI_API_KEY", "")
     if key and key.strip():
         return key.strip()
+
+    # 3. Archivo config_secret.json
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                return data.get("GEMINI_API_KEY", "").strip()
+                val = data.get("GEMINI_API_KEY", "").strip()
+                if val:
+                    return val
         except Exception:
             pass
+
+    # 4. Archivo .env
     if os.path.exists(".env"):
         try:
             with open(".env", "r", encoding="utf-8") as f:
