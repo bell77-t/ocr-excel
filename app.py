@@ -70,11 +70,13 @@ def cargar_api_key():
     return ""
 
 def guardar_api_key(nueva_key):
-    """Guarda permanentemente la API key en config_secret.json y .env."""
+    """Guarda permanentemente la API key en config_secret.json, config_api_key.py y .env."""
     nueva_key = nueva_key.strip()
     try:
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump({"GEMINI_API_KEY": nueva_key}, f, indent=2)
+        with open("config_api_key.py", "w", encoding="utf-8") as f:
+            f.write(f'GEMINI_API_KEY = "{nueva_key}"\n')
         with open(".env", "w", encoding="utf-8") as f:
             f.write(f'GEMINI_API_KEY="{nueva_key}"\n')
     except Exception:
@@ -275,11 +277,48 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Cargar API Key automáticamente
-api_key_activa = cargar_api_key()
+api_key_guardada = cargar_api_key()
+api_key_activa = api_key_guardada
 modo = "🤖 IA con Visión (Recomendado)"
 
+# Si no hay clave configurada en este computador, mostrar tarjeta de entrada directa
 if not api_key_activa:
-    st.warning("⚠️ No se detectó ninguna API Key configurada. Puedes pegarla en la primera línea de `app.py` (`MI_API_KEY_DIRECTA = '...'`) o en `config_api_key.py`.")
+    st.markdown("""
+        <div class="glass-card" style="border: 1px solid rgba(251, 191, 36, 0.45); background: rgba(30, 41, 59, 0.85); padding: 18px 24px; margin-bottom: 20px;">
+            <div style="font-size: 16px; font-weight: 700; color: #FBBF24; margin-bottom: 6px;">🔑 Configuración de API Key (Solo se pide una vez en este PC)</div>
+            <div style="font-size: 13px; color: #94A3B8; margin-bottom: 12px;">Para procesar imágenes con IA en este equipo, pega tu Google Gemini API Key gratuita. Se guardará de forma segura en este computador.</div>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    col_k1, col_k2 = st.columns([3, 1])
+    with col_k1:
+        clave_input = st.text_input("Ingresa tu Gemini API Key:", type="password", placeholder="Pega aquí tu clave (Ej: AIzaSy...)", label_visibility="collapsed")
+    with col_k2:
+        if st.button("💾 Guardar en este PC", use_container_width=True):
+            if clave_input.strip():
+                guardar_api_key(clave_input.strip())
+                st.success("¡Clave guardada con éxito en este equipo! Recargando...")
+                st.rerun()
+            else:
+                st.error("Por favor escribe una clave válida.")
+    
+    if clave_input.strip():
+        api_key_activa = clave_input.strip()
+else:
+    # Si ya está guardada, mostrar badge discreto con opción de cambiar
+    col_s1, col_s2 = st.columns([4, 1])
+    with col_s1:
+        preview = f"••••••••••••••••••••••••{api_key_activa[-4:]}" if len(api_key_activa) >= 4 else "••••••••••••"
+        st.markdown(f"<div style='font-size: 12px; color: #64748B; margin-bottom: 12px;'>🔒 <b>Motor IA Conectado</b> (<span style='color:#38BDF8;'>{preview}</span>)</div>", unsafe_allow_html=True)
+    with col_s2:
+        with st.popover("⚙️ Cambiar Clave"):
+            st.caption("Actualizar API Key en este equipo:")
+            nueva_k = st.text_input("Nueva API Key:", type="password")
+            if st.button("Guardar Nueva Clave", use_container_width=True):
+                if nueva_k.strip():
+                    guardar_api_key(nueva_k.strip())
+                    st.success("¡Clave actualizada!")
+                    st.rerun()
 
 # Subir archivo en tarjeta visual moderna
 col_izq, col_der = st.columns([1, 1])
@@ -983,7 +1022,7 @@ if archivo_subido is not None:
             try:
                 if "IA" in modo:
                     if not api_key_activa:
-                        st.error("⚠️ Para usar el modo IA por favor ingresa tu API Key en la barra lateral izquierda.")
+                        st.error("⚠️ No se encontró una API Key válida. Por favor ingresa tu Gemini API Key en la casilla superior para procesar la imagen.")
                         st.stop()
                     df_resultado, titulo_doc, fecha_doc, notas_doc = extraer_con_ia_vision(bytes_foto, api_key_activa)
                 else:
