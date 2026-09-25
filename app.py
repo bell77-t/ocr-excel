@@ -568,15 +568,61 @@ def mapear_decision_riego(df_foto: pd.DataFrame, fecha_str: str = "") -> pd.Data
     
     col_map = {re.sub(r'[^A-Z0-9%]', '', str(c).upper()): c for c in df_foto.columns}
 
-    # Detectar columnas clave
-    c_val = next((col_map[k] for k in col_map if 'V' in k and ('VAL' in k or k == 'V' or (k.startswith('V') and not 'AFORO' in k))), df_foto.columns[0] if len(df_foto.columns) > 0 else None)
-    c_ce_ent = next((col_map[k] for k in col_map if 'CE' in k and ('ENT' in k or not 'DREN' in k)), None)
-    c_ce_dren = next((col_map[k] for k in col_map if 'CE' in k and 'DREN' in k), c_ce_ent)
-    c_ph_ent = next((col_map[k] for k in col_map if 'PH' in k and ('ENT' in k or not 'DREN' in k)), None)
-    c_ph_dren = next((col_map[k] for k in col_map if 'PH' in k and 'DREN' in k), c_ph_ent)
-    c_vaforo = next((col_map[k] for k in col_map if 'VAFORO' in k or 'AFORO' in k or 'VOLEJ' in k), None)
-    c_vaforo_dren = next((col_map[k] for k in col_map if 'AFORO' in k and 'DREN' in k), None)
-    c_dr = next((col_map[k] for k in col_map if '%' in k or 'DREN' in k or 'PORC' in k or 'DR' in k), None)
+    # 1. Detectar columna de Válvula (V, VAL, VALVULA)
+    c_val = None
+    for k in col_map:
+        if k in ['V', 'VAL', 'VALVULA', 'VALVULAS'] or (k.startswith('V') and not any(x in k for x in ['AFORO', 'CE', 'PH', 'ENT', 'DREN', 'IR'])):
+            c_val = col_map[k]
+            break
+    if not c_val:
+        c_val = df_foto.columns[0] if len(df_foto.columns) > 0 else None
+
+    # 2. CE y pH de Entrada y Drenaje
+    c_ce_ent = next((col_map[k] for k in col_map if 'CE' in k and ('ENT' in k or 'IN' in k or not 'DREN' in k)), None)
+    c_ce_dren = next((col_map[k] for k in col_map if 'CE' in k and ('DREN' in k or 'SAL' in k or 'OUT' in k)), c_ce_ent)
+
+    c_ph_ent = next((col_map[k] for k in col_map if 'PH' in k and ('ENT' in k or 'IN' in k or not 'DREN' in k)), None)
+    c_ph_dren = next((col_map[k] for k in col_map if 'PH' in k and ('DREN' in k or 'SAL' in k or 'OUT' in k)), c_ph_ent)
+
+    # 3. Aforos / Volúmenes (Entrada -> VOL.EJ, Drenaje -> OBSERVACIONES)
+    c_vaforo_ent = None
+    for k in col_map:
+        if ('AFORO' in k or 'VOLEJ' in k or 'VOL' in k) and ('ENT' in k or 'IN' in k):
+            c_vaforo_ent = col_map[k]
+            break
+    if not c_vaforo_ent:
+        for k in col_map:
+            if ('AFORO' in k or 'VOLEJ' in k) and not ('DREN' in k or 'SAL' in k or 'OUT' in k):
+                c_vaforo_ent = col_map[k]
+                break
+    if not c_vaforo_ent:
+        for k in col_map:
+            if 'AFORO' in k or 'VOLEJ' in k or 'VOL' in k:
+                c_vaforo_ent = col_map[k]
+                break
+
+    c_vaforo_dren = None
+    for k in col_map:
+        if ('AFORO' in k or 'VOL' in k or 'VIR' in k) and ('DREN' in k or 'SAL' in k or 'OUT' in k):
+            c_vaforo_dren = col_map[k]
+            break
+    if not c_vaforo_dren:
+        for k in col_map:
+            if 'DREN' in k and not ('CE' in k or 'PH' in k or 'PORC' in k or '%' in k):
+                c_vaforo_dren = col_map[k]
+                break
+
+    # 4. Porcentaje de Drenaje (%DR) - Priorizar explícitamente columnas de porcentaje
+    c_dr = None
+    for k in col_map:
+        if any(p in k for p in ['PORCENTAJE', 'PORC', 'PCT']) or k.endswith('%') or k.startswith('%'):
+            c_dr = col_map[k]
+            break
+    if not c_dr:
+        for k in col_map:
+            if ('DR' in k or 'DREN' in k) and not any(x in k for x in ['CE', 'PH', 'AFORO', 'VOL', 'VIR', 'ENT', 'IN']):
+                c_dr = col_map[k]
+                break
 
     # Calcular número de semana estimado
     semana_val = "36"
@@ -596,50 +642,60 @@ def mapear_decision_riego(df_foto: pd.DataFrame, fecha_str: str = "") -> pd.Data
 
         # CE y pH (priorizar medición de drenaje si existe para semáforo agronómico)
         ce_val = row[c_ce_dren] if (c_ce_dren and c_ce_dren in row) else ""
-        if ce_val == "" or ce_val == "*" or pd.isna(ce_val):
+        if ce_val in ["", "*", "nan", None] or pd.isna(ce_val):
             ce_val = row[c_ce_ent] if (c_ce_ent and c_ce_ent in row) else "*"
-
-        ph_val = row[c_ph_dren] if (c_ph_dren and c_ph_dren in row) else ""
-        if ph_val == "" or ph_val == "*" or pd.isna(ph_val):
-            ph_val = row[c_ph_ent] if (c_ph_ent and c_ph_ent in row) else "*"
-
-        # Convertir CE y pH a float si es posible
         try:
             ce_val = float(str(ce_val).replace(',', '.'))
         except Exception:
             pass
 
+        ph_val = row[c_ph_dren] if (c_ph_dren and c_ph_dren in row) else ""
+        if ph_val in ["", "*", "nan", None] or pd.isna(ph_val):
+            ph_val = row[c_ph_ent] if (c_ph_ent and c_ph_ent in row) else "*"
         try:
             ph_val = float(str(ph_val).replace(',', '.'))
         except Exception:
             pass
 
-        # Vol Ejecutado
-        vol_ej_val = row[c_vaforo] if (c_vaforo and c_vaforo in row) else ""
-        try:
-            vol_ej_val = float(str(vol_ej_val).replace(',', '.'))
-        except Exception:
-            pass
+        # Vol Ejecutado / Aforo Entrada
+        vol_ej_raw = row[c_vaforo_ent] if (c_vaforo_ent and c_vaforo_ent in row) else ""
+        vol_ej_val = "*"
+        if vol_ej_raw not in ["", "*", "nan", None] and not pd.isna(vol_ej_raw):
+            vol_str = str(vol_ej_raw).strip()
+            if '=' in vol_str:
+                vol_str = vol_str.split('=')[-1].strip()
+            try:
+                vol_ej_val = float(vol_str.replace(',', '.'))
+            except Exception:
+                vol_ej_val = vol_str
 
-        # % Drenaje
+        # % Drenaje (%DR)
         dr_val = row[c_dr] if (c_dr and c_dr in row) else ""
-        if isinstance(dr_val, str) and "%" in dr_val:
-            try:
-                dr_num = float(dr_val.replace("%", "").replace(",", ".").strip()) / 100.0
-            except Exception:
-                dr_num = dr_val
-        else:
-            try:
-                dr_num = float(str(dr_val).replace(',', '.'))
-                if dr_num > 1.0 and dr_num <= 100.0:
-                    dr_num = dr_num / 100.0
-            except Exception:
-                dr_num = dr_val
+        dr_num = "*"
+        if dr_val not in ["", "*", "nan", None] and not pd.isna(dr_val):
+            val_str = str(dr_val).strip()
+            if "%" in val_str:
+                try:
+                    dr_num = float(val_str.replace("%", "").replace(",", ".").strip()) / 100.0
+                except Exception:
+                    dr_num = val_str
+            else:
+                try:
+                    num_f = float(val_str.replace(',', '.'))
+                    # Si viene como 76, 93, 137 -> convertir a 0.76, 0.93, 1.37 para formato porcentaje
+                    if num_f > 1.0:
+                        dr_num = num_f / 100.0
+                    else:
+                        dr_num = num_f
+                except Exception:
+                    dr_num = val_str
 
-        # Observaciones
+        # Observaciones (Aforo Drenaje)
         obs = ""
-        if c_vaforo_dren and c_vaforo_dren in row and str(row[c_vaforo_dren]).strip() not in ["", "*", "nan"]:
-            obs = f"Aforo drenaje: {str(row[c_vaforo_dren]).strip()}"
+        if c_vaforo_dren and c_vaforo_dren in row:
+            val_dren = str(row[c_vaforo_dren]).strip()
+            if val_dren not in ["", "*", "nan", "None"]:
+                obs = f"Aforo drenaje: {val_dren}"
 
         filas_dec.append({
             "SEMANA": semana_val,
@@ -798,7 +854,8 @@ def generar_excel_estilizado(df_foto: pd.DataFrame, titulo: str, fecha: str = ""
             ws_dec.cell(row=curr_row, column=17, value=f"=ROUND(G{curr_row}*0.9, 0)").alignment = Alignment(horizontal="center")
             
             # OBSERVACIONES
-            ws_dec.cell(row=curr_row, column=18, value=r_data["OBSERVACIONES"]).alignment = Alignment(horizontal="left")
+            obs_texto = r_data["OBSERVACIONES"] if (pd.notna(r_data.get("OBSERVACIONES")) and r_data.get("OBSERVACIONES")) else ""
+            ws_dec.cell(row=curr_row, column=18, value=obs_texto).alignment = Alignment(horizontal="left")
 
             # Bordes y fuente
             for col_c in range(1, 19):
